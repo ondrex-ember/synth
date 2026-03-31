@@ -424,9 +424,13 @@ function showFragment(nodeId) {
     const node = nodeDatabase.find(n => n.node_id === nodeId);
     if (!node || !node.fragment) return;
     if (shownFragments.has(nodeId)) return;
+
+    const modal = document.getElementById('fragment-modal');
+    if (!modal) return;
+
+    // Mark as shown AFTER we confirm modal exists
     shownFragments.add(nodeId);
     addToLibrary(node);
-    if (!modal) return;
 
     // Pauza gridu
     engine.setTimeMode('pause');
@@ -606,9 +610,15 @@ function initRenderer() {
         statusBadge.textContent = "DORMANT";
         group.appendChild(statusBadge);
 
-        // ── DRAG ──────────────────────────────────────────────────────────
-        group.onmousedown = (e) => {
-            if (e.shiftKey) {
+        // ── UNIFIED POINTER HANDLING ──────────────────────────────────────
+        let pointerStartX = 0, pointerStartY = 0;
+        let didLink = false;
+
+        function onPointerDown(e, clientX, clientY, shiftKey) {
+            didLink = false;
+            pointerStartX = clientX;
+            pointerStartY = clientY;
+            if (shiftKey) {
                 linkingNodeId = nodeData.node_id;
                 tempLine.style.display = "block";
                 hideOnboarding();
@@ -616,28 +626,17 @@ function initRenderer() {
                 draggedNodeId = nodeData.node_id;
             }
             e.stopPropagation();
-        };
+        }
 
-        // Single click (no drag, no shift) = open node modal
-        let clickStartX = 0, clickStartY = 0;
-        group.addEventListener('mousedown', (e) => { clickStartX = e.clientX; clickStartY = e.clientY; });
-        group.addEventListener('mouseup', (e) => {
-            const dx = Math.abs(e.clientX - clickStartX);
-            const dy = Math.abs(e.clientY - clickStartY);
-            if (!e.shiftKey && dx < 5 && dy < 5) {
-                openNodeModal(nodeData.node_id);
-            }
-        });
-
-        // ── CÍL SPOJENÍ ───────────────────────────────────────────────────
-        group.onmouseup = (e) => {
+        function onPointerUp(e, clientX, clientY, shiftKey) {
+            // Handle link target
             if (linkingNodeId && linkingNodeId !== nodeData.node_id) {
-                const srcNode = nodeDatabase.find(n => n.node_id === linkingNodeId);
                 const connId  = engine.connectNodes(linkingNodeId, nodeData.node_id);
                 const conn    = State.connections[connId];
                 setActiveConn(connId);
                 firstAction = false;
                 hideOnboarding();
+                didLink = true;
 
                 if (conn.status === 'ACTIVE') {
                     logEvent(`${linkingNodeId} → ${nodeData.node_id} connected`, 'active');
@@ -645,10 +644,136 @@ function initRenderer() {
                     const req = conn.requiredLogic.join(' → ');
                     logEvent(`${linkingNodeId} → ${nodeData.node_id} · REQUIRED: ${req}`, 'connect');
                 }
+                linkingNodeId = null;
+                tempLine.style.display = "none";
+                e.stopPropagation();
+                return;
             }
-            linkingNodeId = null;
-            tempLine.style.display = "none";
-        };
+
+            // Handle click (no drag, no shift, no link)
+            if (!didLink && !shiftKey) {
+                const dx = Math.abs(clientX - pointerStartX);
+                const dy = Math.abs(clientY - pointerStartY);
+                if (dx < 8 && dy < 8) {
+                    openNodeModal(nodeData.node_id);
+                }
+            }
+        }
+
+        // Mouse events
+        group.addEventListener('mousedown', (e) => {
+            onPointerDown(e, e.clientX, e.clientY, e.shiftKey);
+        });
+        group.addEventListener('mouseup', (e) => {
+            onPointerUp(e, e.clientX, e.clientY, e.shiftKey);
+        });
+
+        // Touch events — long press (300ms) = link mode, short tap = click, drag = move
+        let touchTimer = null;
+        let touchIsLinking = false;
+        let touchStartX = 0, touchStartY = 0;
+
+        group.addEventListener('touchstart', (e) => {
+            const t = e.touches[0];
+            touchStartX = t.clientX;
+            touchStartY = t.clientY;
+            touchIsLinking = false;
+            pointerStartX = t.clientX;
+            pointerStartY = t.clientY;
+            didLink = false;
+
+            // Long press → enter link mode
+            touchTimer = setTimeout(() => {
+                touchIsLinking = true;
+                linkingNodeId = nodeData.node_id;
+                tempLine.style.display = "block";
+                hideOnboarding();
+                // Haptic feedback if available
+                if (navigator.vibrate) navigator.vibrate(30);
+            }, 300);
+
+            e.stopPropagation();
+            e.preventDefault();
+        }, { passive: false });
+
+        group.addEventListener('touchmove', (e) => {
+            const t = e.touches[0];
+            const dx = Math.abs(t.clientX - touchStartX);
+            const dy = Math.abs(t.clientY - touchStartY);
+
+            // Cancel long-press if finger moved
+            if (dx > 10 || dy > 10) {
+                if (touchTimer) { clearTimeout(touchTimer); touchTimer = null; }
+            }
+
+            if (!touchIsLinking && !linkingNodeId) {
+                // Regular drag
+                draggedNodeId = nodeData.node_id;
+                const rect = board.getBoundingClientRect();
+                layoutData[nodeData.node_id].x = t.clientX - rect.left;
+                layoutData[nodeData.node_id].y = t.clientY - rect.top;
+            }
+
+            if (touchIsLinking || linkingNodeId === nodeData.node_id) {
+                const rect = board.getBoundingClientRect();
+                const src = layoutData[nodeData.node_id];
+                if (src) {
+                    tempLine.setAttribute("x1", src.x);
+                    tempLine.setAttribute("y1", src.y);
+                    tempLine.setAttribute("x2", t.clientX - rect.left);
+                    tempLine.setAttribute("y2", t.clientY - rect.top);
+                }
+            }
+
+            e.preventDefault();
+        }, { passive: false });
+
+        group.addEventListener('touchend', (e) => {
+            if (touchTimer) { clearTimeout(touchTimer); touchTimer = null; }
+
+            const t = e.changedTouches[0];
+
+            if (touchIsLinking || linkingNodeId === nodeData.node_id) {
+                // Find target node under finger
+                const rect = board.getBoundingClientRect();
+                const px = t.clientX - rect.left;
+                const py = t.clientY - rect.top;
+                let targetId = null;
+                for (const [nid, pos] of Object.entries(layoutData)) {
+                    const dist = Math.hypot(px - pos.x, py - pos.y);
+                    if (dist < 30 && nid !== nodeData.node_id) {
+                        targetId = nid;
+                        break;
+                    }
+                }
+                if (targetId) {
+                    const connId = engine.connectNodes(nodeData.node_id, targetId);
+                    const conn   = State.connections[connId];
+                    setActiveConn(connId);
+                    firstAction = false;
+                    hideOnboarding();
+                    if (conn.status === 'ACTIVE') {
+                        logEvent(`${nodeData.node_id} → ${targetId} connected`, 'active');
+                    } else {
+                        const req = conn.requiredLogic.join(' → ');
+                        logEvent(`${nodeData.node_id} → ${targetId} · REQUIRED: ${req}`, 'connect');
+                    }
+                }
+                linkingNodeId = null;
+                tempLine.style.display = "none";
+                touchIsLinking = false;
+            } else {
+                // Short tap = click
+                const dx = Math.abs(t.clientX - touchStartX);
+                const dy = Math.abs(t.clientY - touchStartY);
+                if (dx < 10 && dy < 10) {
+                    openNodeModal(nodeData.node_id);
+                }
+            }
+
+            draggedNodeId = null;
+            e.preventDefault();
+        }, { passive: false });
 
         group.setAttribute("transform", `translate(${pos.x},${pos.y})`);
         nodeLayer.appendChild(group);
@@ -736,6 +861,16 @@ window.onmouseup = () => {
     draggedNodeId = null;
     if (linkingNodeId) { linkingNodeId = null; tempLine.style.display = "none"; }
 };
+
+// Global touch handlers for background
+board.addEventListener('touchmove', (e) => {
+    if (draggedNodeId || linkingNodeId) e.preventDefault();
+}, { passive: false });
+
+board.addEventListener('touchend', () => {
+    draggedNodeId = null;
+    if (linkingNodeId) { linkingNodeId = null; tempLine.style.display = "none"; }
+});
 
 // ── SPOJENÍ ───────────────────────────────────────────────────────────────────
 function updateLinks() {
