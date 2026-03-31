@@ -1,0 +1,1056 @@
+﻿<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+    <meta name="mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black">
+    <title>Systemic Synthesis — v1.6</title>
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; user-select: none; -webkit-user-select: none; -webkit-tap-highlight-color: transparent; }
+        body { background-color: #0a0a0a; color: #d0d0d0; font-family: monospace; overflow: hidden; touch-action: none; }
+        #game-board { width: 100vw; height: 100vh; }
+
+        #ui-layer {
+            position: absolute; top: 20px; left: 20px; z-index: 100;
+            padding: 0 0 0 8px; transition: border-left 0.2s;
+            pointer-events: none;
+        }
+        #ui-layer h1 { font-size: 18px; letter-spacing: 3px; color: #d0d0d0; margin-bottom: 4px; }
+        #status-line { font-size: 10px; color: #555; margin-bottom: 12px; letter-spacing: 1px; }
+        #time-mode-label { font-size: 10px; color: #0ff; letter-spacing: 2px; min-height: 14px; margin-bottom: 8px; }
+
+        /* ── TIME DISPLAY ─────────────────────────────────────────────── */
+        #time-display {
+            margin-bottom: 12px;
+            width: 200px;
+            max-width: calc(100vw - 40px);
+        }
+        #time-year-row {
+            display: flex;
+            align-items: baseline;
+            gap: 8px;
+            margin-bottom: 5px;
+        }
+        #time-year {
+            font-family: 'Courier New', monospace;
+            font-size: 22px;
+            color: #c8c8c8;
+            letter-spacing: 3px;
+            line-height: 1;
+        }
+        #time-multiplier {
+            font-family: 'Courier New', monospace;
+            font-size: 8px;
+            color: #333;
+            letter-spacing: 2px;
+        }
+        #time-pulse-wrap {
+            width: 100%;
+            height: 2px;
+            background: #0d0d0d;
+            border-radius: 1px;
+            overflow: hidden;
+            margin-bottom: 4px;
+        }
+        #time-pulse-fill {
+            height: 100%;
+            border-radius: 1px;
+            transition: width 0.08s linear, background 1s ease;
+        }
+        #time-era-wrap {
+            width: 100%;
+            height: 1px;
+            background: #0d0d0d;
+            border-radius: 1px;
+            overflow: hidden;
+            margin-bottom: 3px;
+        }
+        #time-era-fill {
+            height: 100%;
+            background: #1a1a1a;
+            border-radius: 1px;
+            transition: width 2s linear;
+        }
+        #time-era-label {
+            font-family: 'Courier New', monospace;
+            font-size: 7px;
+            color: #1a1a1a;
+            letter-spacing: 2px;
+            display: flex;
+            justify-content: space-between;
+        }
+
+        #parser-container {
+            background: #000; border: 1px solid #333;
+            padding: 8px 10px; width: 200px; max-width: calc(100vw - 40px);
+            pointer-events: auto;
+            position: relative;
+        }
+        #parser-label {
+            font-size: 9px; color: #BA7517; letter-spacing: 1px;
+            margin-bottom: 6px; min-height: 14px;
+        }
+        .parser-prompt { display: flex; align-items: center; gap: 8px; position: relative; }
+        .parser-prompt span { color: #0f0; font-size: 11px; }
+        #parser-input {
+            background: transparent; border: none; color: #fff;
+            font-family: monospace; font-size: 11px;
+            outline: none; width: 140px; caret-color: #0f0;
+            position: relative; z-index: 2;
+        }
+        #whisper-overlay {
+            position: absolute;
+            left: 19px; /* width of "> " prompt */
+            top: 0;
+            font-family: monospace; font-size: 11px;
+            color: transparent;
+            pointer-events: none;
+            white-space: pre;
+            z-index: 1;
+            line-height: inherit;
+        }
+        #whisper-overlay .typed { color: transparent; }
+        #whisper-overlay .ghost { color: #3a5a3a; }
+
+        #onboarding-hint {
+            margin-top: 14px; padding: 10px 12px;
+            border: 1px solid #1a3a1a; background: #050f05;
+            width: 200px; pointer-events: none;
+        }
+        #onboarding-hint .hint-title { color: #0f0; font-size: 9px; letter-spacing: 2px; margin-bottom: 8px; }
+        #onboarding-hint .hint-step { color: #3a6a3a; font-size: 9px; line-height: 1.8; }
+        #onboarding-hint .hint-step strong { color: #5a9a5a; }
+
+        #hint-line { font-size: 9px; color: #2a2a2a; margin-top: 14px; line-height: 1.8; }
+
+        #status-bar {
+            position: fixed; bottom: 12px; left: 0; right: 0;
+            text-align: center; font-family: monospace;
+            font-size: 10px; color: #555; letter-spacing: 1px;
+            pointer-events: none; z-index: 50;
+        }
+
+        /* ── INTRO MODAL ──────────────────────────────────────────────── */
+        #intro-modal {
+            position: fixed; inset: 0;
+            background: #000;
+            z-index: 9000;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            overflow-y: auto;
+        }
+
+        #intro-inner {
+            max-width: 720px;
+            width: 95vw;
+            padding: 60px 20px;
+        }
+
+        .iline {
+            opacity: 0;
+            font-size: 13px;
+            line-height: 2.1;
+            letter-spacing: 0.8px;
+            color: #888;
+            white-space: pre;
+            transition: opacity 0.35s ease;
+        }
+        .iline.large {
+            font-size: 28px;
+            letter-spacing: 8px;
+            color: #d0d0d0;
+            line-height: 1.4;
+            white-space: normal;
+        }
+        .iline.amber  { color: #BA7517; }
+        .iline.white  { color: #d0d0d0; }
+        .iline.red    { color: #A32D2D; }
+        .iline.dim    { color: #444; }
+        .iline.gap    { min-height: 12px; }
+        .iline.fragment {
+            color: #888;
+            font-size: 12px;
+            border-left: 2px solid #222;
+            padding-left: 16px;
+            line-height: 2.2;
+            white-space: normal;
+            font-style: italic;
+        }
+        .iline.fragment .src {
+            color: #444;
+            font-size: 10px;
+            font-style: normal;
+            display: block;
+            margin-top: 4px;
+            letter-spacing: 1px;
+        }
+        .iline.instruction {
+            color: #666;
+            font-size: 12px;
+            line-height: 2.1;
+            white-space: normal;
+            border-left: 2px solid #1a2a1a;
+            padding-left: 16px;
+        }
+        .iline.instruction strong { color: #7ab87a; }
+        .iline.instruction .nref  { color: #BA7517; }
+        .iline.instruction .wref  { color: #8a4a00; }
+        .syslock {
+            color: #6a2a2a;
+            font-size: 10px;
+            letter-spacing: 0.4px;
+        }
+
+        #intro-enter {
+            display: none;
+            margin-top: 40px;
+            background: none;
+            border: 1px solid #222;
+            color: #555;
+            font-family: 'Courier New', monospace;
+            font-size: 11px;
+            letter-spacing: 4px;
+            padding: 13px 36px;
+            cursor: pointer;
+            transition: all 0.4s;
+        }
+        #intro-enter:hover { border-color: #BA7517; color: #BA7517; background: #080600; }
+
+        #intro-skip {
+            position: fixed;
+            top: 20px; right: 24px;
+            background: none; border: none;
+            color: #333; font-family: 'Courier New', monospace;
+            font-size: 10px; letter-spacing: 2px;
+            cursor: pointer; transition: color 0.3s; z-index: 9001;
+        }
+        #intro-skip:hover { color: #666; }
+
+        #intro-cursor {
+            display: inline-block;
+            width: 8px; height: 14px;
+            background: #BA7517;
+            animation: iblink 1.1s step-end infinite;
+            vertical-align: middle; margin-left: 4px;
+        }
+        @keyframes iblink { 0%,100%{opacity:1} 50%{opacity:0} }
+
+        /* ── EVENT LOG ──────────────────────────────────────────────── */
+        #event-log {
+            position: fixed;
+            bottom: 32px;
+            left: 20px;
+            width: 340px;
+            max-height: 220px;
+            overflow: hidden;
+            z-index: 200;
+            pointer-events: none;
+            display: flex;
+            flex-direction: column;
+            justify-content: flex-end;
+            gap: 3px;
+        }
+
+        .log-entry {
+            font-family: 'Courier New', monospace;
+            font-size: 10px;
+            letter-spacing: 0.6px;
+            line-height: 1.7;
+            padding: 2px 0;
+            opacity: 0;
+            transition: opacity 0.3s ease;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            display: flex;
+            align-items: center;
+            gap: 7px;
+        }
+        .log-entry.visible { opacity: 1; }
+        .log-entry.fading  { opacity: 0.15; }
+
+        .log-text { flex: 1; overflow: hidden; text-overflow: ellipsis; }
+
+        .log-entry.info    { color: #666; }
+        .log-entry.connect { color: #7aba7a; }
+        .log-entry.active  { color: #e8920a; }
+        .log-entry.warning { color: #c87820; }
+        .log-entry.error   { color: #cc3333; }
+        .log-entry.rot     { color: #aa3a3a; }
+        .log-entry.system  { color: #555; }
+        .log-entry.critical { color: #ff4444; }
+
+        .log-bar-wrap {
+            width: 36px;
+            height: 3px;
+            background: #1a1a1a;
+            flex-shrink: 0;
+            border-radius: 1px;
+            overflow: hidden;
+        }
+        .log-bar {
+            height: 100%;
+            border-radius: 1px;
+            transition: width 0.3s;
+        }
+        .log-entry.warning  .log-bar { background: #c87820; }
+        .log-entry.error    .log-bar { background: #cc3333; }
+        .log-entry.critical .log-bar { background: #ff4444; }
+        .log-entry.active   .log-bar { background: #e8920a; }
+        .log-entry.connect  .log-bar { background: #7aba7a; }
+        .log-entry.info     .log-bar { background: #444; }
+        .log-entry.system   .log-bar { background: #333; }
+
+        /* ── NODE MODAL ──────────────────────────────────────────────── */
+        #node-modal {
+            display: none;
+            position: fixed;
+            inset: 0;
+            background: rgba(0,0,0,0.75);
+            z-index: 500;
+            align-items: center;
+            justify-content: center;
+        }
+        #node-modal.open { display: flex; }
+
+        #node-modal-inner {
+            width: min(560px, 95vw);
+            max-height: 80vh;
+            overflow-y: auto;
+            background: #060606;
+            border: 1px solid #2a2a2a;
+            padding: 28px 32px;
+            font-family: 'Courier New', monospace;
+            position: relative;
+        }
+
+        #node-modal-close {
+            position: absolute;
+            top: 14px; right: 18px;
+            background: none; border: none;
+            color: #444; font-family: 'Courier New', monospace;
+            font-size: 10px; letter-spacing: 2px;
+            cursor: pointer; transition: color 0.2s;
+        }
+        #node-modal-close:hover { color: #888; }
+
+        .nm-id {
+            font-size: 9px; color: #444;
+            letter-spacing: 3px; margin-bottom: 4px;
+        }
+        .nm-title {
+            font-size: 20px; color: #c8c8c8;
+            letter-spacing: 2px; margin-bottom: 4px;
+            line-height: 1.3;
+        }
+        .nm-type {
+            font-size: 9px; color: #555;
+            letter-spacing: 2px; margin-bottom: 16px;
+        }
+
+        .nm-rot-bar-wrap {
+            height: 3px;
+            background: #111;
+            margin-bottom: 20px;
+            border-radius: 1px;
+            overflow: hidden;
+        }
+        .nm-rot-bar {
+            height: 100%;
+            border-radius: 1px;
+            transition: width 0.6s ease;
+        }
+
+        .nm-description {
+            font-size: 11px;
+            color: #777;
+            line-height: 2;
+            margin-bottom: 24px;
+            border-left: 2px solid #1a1a1a;
+            padding-left: 14px;
+        }
+
+        .nm-section-title {
+            font-size: 8px;
+            color: #333;
+            letter-spacing: 3px;
+            text-transform: uppercase;
+            margin-bottom: 10px;
+        }
+
+        .nm-chars {
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+            margin-bottom: 24px;
+        }
+        .nm-char-row {
+            display: flex;
+            gap: 16px;
+            font-size: 10px;
+            line-height: 1.7;
+        }
+        .nm-char-label {
+            color: #444;
+            min-width: 140px;
+            flex-shrink: 0;
+        }
+        .nm-char-value { color: #888; }
+
+        .nm-irreducible {
+            font-size: 9px;
+            color: #7a2a2a;
+            letter-spacing: 1px;
+            border: 1px solid #2a0a0a;
+            padding: 8px 12px;
+            margin-bottom: 20px;
+            background: #0a0303;
+        }
+
+        .nm-stats {
+            display: grid;
+            grid-template-columns: 1fr 1fr 1fr;
+            gap: 12px;
+            margin-bottom: 20px;
+        }
+        .nm-stat {
+            background: #0a0a0a;
+            border: 1px solid #1a1a1a;
+            padding: 10px 12px;
+        }
+        .nm-stat-label {
+            font-size: 8px; color: #333;
+            letter-spacing: 2px; margin-bottom: 4px;
+        }
+        .nm-stat-value {
+            font-size: 13px; color: #666;
+            letter-spacing: 1px;
+        }
+        .nm-stat-value.hot { color: #cc3333; }
+        .nm-stat-value.warm { color: #c87820; }
+        .nm-stat-value.ok   { color: #5a8a5a; }
+
+        .nm-source {
+            font-size: 9px; color: #2a2a2a;
+            letter-spacing: 1px; margin-top: 20px;
+            padding-top: 14px;
+            border-top: 1px solid #111;
+        }
+
+        /* ── FILTER WHISPER ──────────────────────────────────────────── */
+        #filter-whisper {
+            display: none;
+            position: absolute;
+            top: calc(100% + 2px);
+            left: -1px;
+            width: calc(100% + 2px);
+            background: #050505;
+            border: 1px solid #222;
+            z-index: 300;
+            max-height: 240px;
+            overflow-y: auto;
+        }
+
+        .whisper-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 6px 12px;
+            cursor: pointer;
+            border-bottom: 1px solid #0f0f0f;
+            transition: background 0.1s;
+        }
+        .whisper-item:hover,
+        .whisper-item.selected { background: #111; }
+        .whisper-item.required-match { border-left: 2px solid #BA7517; }
+        .whisper-item.required-match .w-filter { color: #e8920a; }
+
+        .w-filter {
+            font-family: 'Courier New', monospace;
+            font-size: 11px;
+            color: #666;
+            letter-spacing: 1px;
+        }
+        .w-hint {
+            font-family: 'Courier New', monospace;
+            font-size: 9px;
+            color: #333;
+        }
+        .w-required {
+            font-family: 'Courier New', monospace;
+            font-size: 8px;
+            color: #BA7517;
+            letter-spacing: 1px;
+        }
+
+        /* ── FRAGMENT MODAL ──────────────────────────────────────────── */
+        #fragment-modal {
+            display: none;
+            position: fixed;
+            inset: 0;
+            background: #000;
+            z-index: 800;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            padding: 60px 40px;
+        }
+        #fragment-modal.open { display: flex; }
+
+        #fragment-modal::before {
+            content: '';
+            position: absolute;
+            inset: 0;
+            background:
+                repeating-linear-gradient(
+                    0deg,
+                    transparent,
+                    transparent 2px,
+                    rgba(255,255,255,0.01) 2px,
+                    rgba(255,255,255,0.01) 4px
+                );
+            pointer-events: none;
+        }
+
+        #fragment-inner {
+            max-width: 680px;
+            width: 95vw;
+            position: relative;
+        }
+
+        #fragment-node-id {
+            font-family: 'Courier New', monospace;
+            font-size: 9px;
+            color: #2a2a2a;
+            letter-spacing: 4px;
+            margin-bottom: 32px;
+        }
+
+        #fragment-text {
+            font-family: 'Courier New', monospace;
+            font-size: 18px;
+            color: #888;
+            line-height: 2;
+            margin-bottom: 40px;
+            border-left: 2px solid #1a1a1a;
+            padding-left: 24px;
+            font-style: italic;
+            transition: color 2s ease;
+        }
+        #fragment-text.revealed { color: #c8c8c8; }
+
+        #fragment-meta {
+            font-family: 'Courier New', monospace;
+            font-size: 10px;
+            color: #333;
+            letter-spacing: 1px;
+            line-height: 2;
+            padding-left: 26px;
+        }
+
+        #fragment-meta .meta-date     { color: #444; }
+        #fragment-meta .meta-location { color: #333; }
+        #fragment-meta .meta-source   { color: #2a2a2a; }
+        #fragment-meta .meta-era      { color: #1a2a1a; font-size: 8px; letter-spacing: 2px; margin-top: 6px; display: block; }
+
+        #fragment-counter {
+            position: absolute;
+            top: 0;
+            right: 0;
+            font-family: 'Courier New', monospace;
+            font-size: 9px;
+            color: #2a2a2a;
+            letter-spacing: 2px;
+        }
+
+        #fragment-close {
+            margin-top: 48px;
+            background: none;
+            border: 1px solid #1a1a1a;
+            color: #2a2a2a;
+            font-family: 'Courier New', monospace;
+            font-size: 9px;
+            letter-spacing: 4px;
+            padding: 10px 28px;
+            cursor: pointer;
+            transition: all 0.4s;
+        }
+        #fragment-close:hover {
+            border-color: #444;
+            color: #666;
+        }
+
+        #fragment-rot-warning {
+            display: none;
+            margin-top: 16px;
+            font-family: 'Courier New', monospace;
+            font-size: 9px;
+            color: #5a1a1a;
+            letter-spacing: 2px;
+        }
+
+        #era-badge {
+            display: inline-block;
+            font-size: 8px;
+            letter-spacing: 3px;
+            color: #BA7517;
+            border: 1px solid #2a1a00;
+            padding: 2px 8px;
+            margin-bottom: 6px;
+            background: #0a0600;
+        }
+
+        /* ── FRAGMENT LIBRARY ────────────────────────────────────────── */
+        #fragment-library {
+            position: fixed;
+            top: 0; right: 0;
+            width: 260px;
+            height: 100vh;
+            background: #050505;
+            border-left: 1px solid #111;
+            z-index: 150;
+            display: flex;
+            flex-direction: column;
+            transform: translateX(100%);
+            transition: transform 0.4s ease;
+            pointer-events: auto;
+        }
+        #fragment-library.open {
+            transform: translateX(0);
+        }
+        #lib-header {
+            padding: 16px 16px 12px;
+            border-bottom: 1px solid #111;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            flex-shrink: 0;
+        }
+        #lib-title {
+            font-family: 'Courier New', monospace;
+            font-size: 8px;
+            color: #333;
+            letter-spacing: 3px;
+        }
+        #lib-count {
+            font-family: 'Courier New', monospace;
+            font-size: 8px;
+            color: #2a2a2a;
+            letter-spacing: 1px;
+        }
+        #lib-toggle {
+            position: fixed;
+            right: 0; top: 50%;
+            transform: translateY(-50%);
+            background: #0a0a0a;
+            border: 1px solid #1a1a1a;
+            border-right: none;
+            color: #2a2a2a;
+            font-family: 'Courier New', monospace;
+            font-size: 8px;
+            letter-spacing: 1px;
+            padding: 10px 5px;
+            cursor: pointer;
+            z-index: 151;
+            writing-mode: vertical-rl;
+            transition: all 0.3s;
+            display: none;
+        }
+        #lib-toggle:hover { color: #555; border-color: #333; }
+        #lib-toggle.has-items { display: block; }
+        #lib-entries {
+            flex: 1;
+            overflow-y: auto;
+            padding: 8px 0;
+        }
+        #lib-entries::-webkit-scrollbar { width: 2px; }
+        #lib-entries::-webkit-scrollbar-track { background: #050505; }
+        #lib-entries::-webkit-scrollbar-thumb { background: #1a1a1a; }
+        .lib-entry {
+            padding: 10px 16px;
+            border-bottom: 1px solid #0d0d0d;
+            cursor: pointer;
+            transition: background 0.15s;
+        }
+        .lib-entry:hover { background: #0d0d0d; }
+        .lib-entry-id {
+            font-family: 'Courier New', monospace;
+            font-size: 7px;
+            color: #2a2a2a;
+            letter-spacing: 2px;
+            margin-bottom: 3px;
+        }
+        .lib-entry-title {
+            font-family: 'Courier New', monospace;
+            font-size: 10px;
+            color: #555;
+            letter-spacing: 0.5px;
+            margin-bottom: 4px;
+            line-height: 1.4;
+        }
+        .lib-entry-preview {
+            font-family: 'Courier New', monospace;
+            font-size: 8px;
+            color: #2a2a2a;
+            line-height: 1.6;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            font-style: italic;
+        }
+        .lib-entry-date {
+            font-family: 'Courier New', monospace;
+            font-size: 7px;
+            color: #1a1a1a;
+            letter-spacing: 1px;
+            margin-top: 4px;
+        }
+        #mute-btn {
+            position: fixed;
+            top: 20px; right: 24px;
+            background: none; border: 1px solid #1a1a1a;
+            color: #333; font-family: 'Courier New', monospace;
+            font-size: 9px; letter-spacing: 2px;
+            padding: 5px 10px;
+            cursor: pointer; transition: all 0.2s; z-index: 200;
+        }
+        #mute-btn:hover { border-color: #444; color: #666; }
+        #mute-btn.muted { color: #1a1a1a; border-color: #0f0f0f; }
+        #role-line {
+            font-size: 9px;
+            color: #333;
+            letter-spacing: 2px;
+            margin-bottom: 10px;
+        }
+
+        /* ── THROTTLE SLIDERS ────────────────────────────────────────── */
+        .throttle-wrap {
+            position: absolute;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 2px;
+            pointer-events: auto;
+            z-index: 50;
+            transform: translate(-50%, -50%);
+            touch-action: none;
+        }
+
+        .throttle-wrap input[type=range] {
+            -webkit-appearance: none;
+            appearance: none;
+            writing-mode: vertical-lr;
+            direction: rtl;
+            width: 4px;
+            height: 44px;
+            background: transparent;
+            outline: none;
+            cursor: ns-resize;
+            padding: 0;
+            margin: 0;
+            touch-action: none;
+        }
+
+        .throttle-wrap input[type=range]::-webkit-slider-runnable-track {
+            width: 4px;
+            background: #1a1a1a;
+            border-radius: 2px;
+            border: 1px solid #2a2a2a;
+        }
+
+        .throttle-wrap input[type=range]::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            width: 12px;
+            height: 5px;
+            background: #888;
+            border-radius: 1px;
+            cursor: ns-resize;
+            margin-left: -4px;
+        }
+
+        .throttle-wrap.overclock input[type=range]::-webkit-slider-thumb {
+            background: #cc3333;
+        }
+
+        .throttle-wrap.active input[type=range]::-webkit-slider-thumb {
+            background: #BA7517;
+        }
+
+        .throttle-pct {
+            font-family: 'Courier New', monospace;
+            font-size: 8px;
+            color: #333;
+            letter-spacing: 0.5px;
+            white-space: nowrap;
+        }
+
+        .throttle-wrap.active  .throttle-pct { color: #666; }
+        .throttle-wrap.overclock .throttle-pct { color: #cc3333; }
+
+        #throttle-layer {
+            position: absolute;
+            inset: 0;
+            pointer-events: none;
+            z-index: 50;
+        }
+    </style>
+</head>
+<body>
+    <div id="game-board">
+        <div id="throttle-layer"></div>
+    </div>
+
+    <div id="ui-layer">
+        <div id="era-badge">ERA III &nbsp;&middot;&nbsp; LANCASHIRE 1780&ndash;1830</div>
+        <h1>SYSTEMIC SYNTHESIS</h1>
+        <div id="role-line">ROLE: SYSTEMIC AUDITOR &nbsp;&middot;&nbsp; OBJECTIVE: EXTRACT BEFORE COLLAPSE</div>
+        <div id="status-line">GRID ACTIVE &middot; SHIFT+DRAG TO CONNECT &middot; SPACE TO PAUSE</div>
+        <div id="time-mode-label"></div>
+
+        <!-- TIME DISPLAY -->
+        <div id="time-display">
+            <div id="time-year-row">
+                <span id="time-year">1780</span>
+                <span id="time-multiplier">1.0×</span>
+            </div>
+            <div id="time-pulse-wrap"><div id="time-pulse-fill"></div></div>
+            <div id="time-era-wrap"><div id="time-era-fill" style="width:0%"></div></div>
+            <div id="time-era-label"><span>1780</span><span>ERA III</span><span>1830</span></div>
+        </div>
+
+        <div id="parser-container">
+            <div id="parser-label"></div>
+            <div class="parser-prompt">
+                <span>&gt;</span>
+                <div id="whisper-overlay"><span class="typed"></span><span class="ghost"></span></div>
+                <input type="text" id="parser-input" placeholder="Enter filter..." autocomplete="off" spellcheck="false">
+            </div>
+            <div id="filter-whisper"></div>
+        </div>
+
+        <div id="onboarding-hint" style="display:none;">
+            <div class="hint-title">&#x25B6; FIRST MOVE</div>
+            <div class="hint-step">
+                <strong>SHIFT+DRAG</strong> N04 &rarr; N07<br>
+                Then type <strong>EXTRACT</strong> and press Enter<br>
+                <br>
+                Clean nodes first &mdash; no rot, no risk.<br>
+                N02 last. Always.
+            </div>
+        </div>
+
+        <div id="hint-line">
+            SHIFT+DRAG &mdash; connect nodes<br>
+            CLICK line &mdash; select for parser<br>
+            SPACE &mdash; strategic pause<br>
+            R &mdash; reset after collapse
+        </div>
+    </div>
+
+    <div id="event-log"></div>
+
+    <!-- NODE MODAL -->
+    <div id="node-modal" onclick="closeNodeModal(event)">
+      <div id="node-modal-inner">
+        <button id="node-modal-close" onclick="closeNodeModal()">CLOSE &times;</button>
+        <div id="node-modal-content"></div>
+      </div>
+    </div>
+    <!-- FRAGMENT MODAL -->
+    <div id="fragment-modal">
+        <div id="fragment-inner">
+            <div id="fragment-counter"></div>
+            <div id="fragment-node-id"></div>
+            <div id="fragment-text"></div>
+            <div id="fragment-meta">
+                <span class="meta-date" id="fragment-date"></span><br>
+                <span class="meta-location" id="fragment-location"></span><br>
+                <span class="meta-source" id="fragment-source"></span>
+                <span class="meta-era">ERA III &nbsp;·&nbsp; LANCASHIRE 1780&ndash;1830</span>
+            </div>
+            <div id="fragment-rot-warning">⚠ GRID DEGRADING DURING READ</div>
+            <button id="fragment-close" onclick="closeFragment()">
+                CONTINUE AUDIT &rsaquo;
+            </button>
+        </div>
+    </div>
+
+    <div id="status-bar"></div>
+
+    <!-- FRAGMENT LIBRARY -->
+    <button id="lib-toggle" onclick="toggleLibrary()">ARCHIVE</button>
+    <div id="fragment-library">
+        <div id="lib-header">
+            <span id="lib-title">ARCHIVE // EXTRACTED</span>
+            <span id="lib-count">0 / 15</span>
+        </div>
+        <div id="lib-entries"></div>
+    </div>
+
+
+    <!-- ── INTRO MODAL ───────────────────────────────────────────────── -->
+    <button id="intro-skip" onclick="skipIntro()">SKIP &rsaquo;</button>
+    <button id="mute-btn" onclick="toggleMute()" title="Toggle sound">♪ SND</button>
+    <div id="intro-modal">
+      <div id="intro-inner">
+        <div class="iline dim"   id="i00">SYSTEMIC SYNTHESIS // AUDIT ENGINE v1.4 // LANCASHIRE COMPLEX</div>
+        <div class="iline dim"   id="i01">CASE REF: SYS-1780-LC // CLASSIFICATION: <span style="background:#0a0000;color:#2a0000;padding:0 4px;">&#x2588;&#x2588;&#x2588;&#x2588;&#x2588;&#x2588;&#x2588;&#x2588;</span></div>
+        <div class="iline gap"   id="i02"></div>
+        <div class="iline dim"   id="i03">PARSER ENGINE...................<span style="color:#1a4a1a;">OK</span></div>
+        <div class="iline dim"   id="i04">NODE DATABASE [15 NODES]........<span style="color:#1a4a1a;">OK</span></div>
+        <div class="iline dim"   id="i05">ROT PROPAGATION [0.3x]..........<span style="color:#1a4a1a;">OK</span></div>
+        <div class="iline dim"   id="i06">ARCHIVE FRAGMENTS [15 FOUND]....<span style="color:#1a4a1a;">OK</span></div>
+        <div class="iline dim"   id="i07">IRREDUCIBLE FRICTION CHECK......<span style="color:#6a3a00;">WARNING: N02, N05, N09 CANNOT BE NORMALIZED</span></div>
+        <div class="iline gap"   id="i08"></div>
+        <div class="iline large" id="i09">SYSTEMIC<br>SYNTHESIS</div>
+        <div class="iline gap"   id="i10"></div>
+        <div class="iline white" id="i11">LANCASHIRE COTTON ECONOMY  &middot;  1780&ndash;1830</div>
+        <div class="iline gap"   id="i12"></div>
+        <div class="iline fragment" id="i13">
+          The following is a real accounting entry from the cotton trade ledgers
+          of Baring Brothers &amp; Co., City of London, 1821.<br>
+          Baring Brothers was one of Britain&rsquo;s most powerful merchant banks,
+          financing the Atlantic cotton system.<br><br>
+          &ldquo;[Enslaved person] No. 4, male, age 14. Valued at &pound;47 sterling.
+          Mortgaged against Liverpool mill machinery, ref. BB/1821/COT/114.&rdquo;<br><br>
+          Enslaved people were recorded as depreciating capital assets &mdash;
+          assigned numbers, appraised, and used as collateral for industrial loans.
+          <span class="src">&mdash; Baring Brothers &amp; Co., Cotton Ledger Series, 1821
+          &nbsp;&middot;&nbsp; ING Barings Archive, London</span>
+        </div>
+        <div class="iline gap"   id="i14"></div>
+        <div class="iline amber" id="i15">YOUR ROLE: SYSTEMIC AUDITOR</div>
+        <div class="iline white" id="i16">You do not build history. You build the machine that forces it to confess.</div>
+        <div class="iline gap"   id="i17"></div>
+        <div class="iline"       id="i18">Wire the nodes. Force the connections. Extract the evidence before the system collapses.</div>
+        <div class="iline"       id="i19">The collapse is not a failure condition. It is the destination.</div>
+        <div class="iline"       id="i20">Your only question is: <span style="color:#d0d0d0;">how much truth can you pull out before it does.</span></div>
+        <div class="iline gap"   id="i21"></div>
+        <div class="iline red"   id="i22">WARNING: IRREDUCIBLE FRICTION</div>
+        <div class="iline"       id="i23">Some nodes carry a rot floor no filter sequence can resolve.</div>
+        <div class="iline"       id="i24">When you see: <span class="syslock">SYS_LOCK: EXTRACTION BASELINE &mdash; MINIMUM VIABLE FRICTION UNRESOLVABLE</span></div>
+        <div class="iline"       id="i25">that is not a bug. That is the argument.</div>
+        <div class="iline gap"   id="i26"></div>
+        <div class="iline instruction" id="i27">
+          <strong>WHERE TO START:</strong><br>
+          Connect <span class="nref">N04</span> (British Coal Seams) &rarr; <span class="nref">N07</span> (Early Steam Power)<br>
+          SHIFT+DRAG node to node &mdash; type <strong>EXTRACT</strong> in the parser &mdash; press Enter<br>
+          Clean nodes first. Zero rot, zero risk. Build your foundation.
+        </div>
+        <div class="iline gap"   id="i28"></div>
+        <div class="iline instruction" id="i29">
+          <strong>WHERE IT GOES WRONG:</strong><br>
+          <span class="nref">N02</span> (US Chattel Slavery) has a permanent rot floor of 45%.<br>
+          Every second it runs, it bleeds into <span class="nref">N05 &rarr; N08 &rarr; N11</span>.<br>
+          You cannot reach <span class="nref">N15</span> (Industrial Capitalism) without routing through it.<br>
+          <span class="wref">The system requires the atrocity. That is the point.</span>
+        </div>
+        <div class="iline gap"   id="i30"></div>
+        <div class="iline dim"   id="i31">GRID DEGRADES. SYSTEM COLLAPSES. AUDIT REPORT FOLLOWS.</div>
+        <div class="iline dim"   id="i32">The report is not a score. It is the evidence you came here to find.</div>
+        <div class="iline gap"   id="i33"></div>
+        <div class="iline white" id="i34">GOOD LUCK, AUDITOR. <span id="intro-cursor"></span></div>
+        <button id="intro-enter" onclick="closeIntro()">ENTER THE GRID</button>
+      </div>
+    </div>
+
+    <script>
+    (function() {
+      const seq = [
+        {id:'i00',t:200},{id:'i01',t:450},{id:'i02',t:650},
+        {id:'i03',t:850},{id:'i04',t:1050},{id:'i05',t:1250},
+        {id:'i06',t:1450},{id:'i07',t:1650},{id:'i08',t:1850},
+        {id:'i09',t:2050,f:700},{id:'i10',t:2850},
+        {id:'i11',t:3050},{id:'i12',t:3300},
+        {id:'i13',t:3500,f:900},{id:'i14',t:4550},
+        {id:'i15',t:4750},{id:'i16',t:5150},{id:'i17',t:5600},
+        {id:'i18',t:5800},{id:'i19',t:6350},{id:'i20',t:6850},
+        {id:'i21',t:7400},{id:'i22',t:7600},{id:'i23',t:8050},
+        {id:'i24',t:8550},{id:'i25',t:9200},{id:'i26',t:9700},
+        {id:'i27',t:9900,f:600},{id:'i28',t:11050},
+        {id:'i29',t:11250,f:600},{id:'i30',t:12450},
+        {id:'i31',t:12650},{id:'i32',t:13100},
+        {id:'i33',t:13600},{id:'i34',t:13800,final:true},
+      ];
+
+      const timers = [];
+
+      window.closeIntro = function() {
+        if (typeof Audio !== 'undefined') Audio.init();
+        const modal = document.getElementById('intro-modal');
+        const skip  = document.getElementById('intro-skip');
+        modal.style.transition = 'opacity 0.6s';
+        modal.style.opacity = '0';
+        setTimeout(() => { modal.remove(); if(skip) skip.remove(); }, 650);
+      };
+
+      window.skipIntro = function() {
+        timers.forEach(clearTimeout);
+        document.querySelectorAll('.iline').forEach(el => {
+          el.style.transition = 'opacity 0.05s';
+          el.style.opacity = '1';
+        });
+        showEnterBtn();
+      };
+
+      function showEnterBtn() {
+        const btn = document.getElementById('intro-enter');
+        if (!btn) return;
+        btn.style.display = 'inline-block';
+        btn.style.opacity = '0';
+        btn.style.transition = 'opacity 0.8s';
+        setTimeout(() => btn.style.opacity = '1', 50);
+      }
+
+      seq.forEach(({id, t, f, final: isFinal}) => {
+        const timer = setTimeout(() => {
+          const el = document.getElementById(id);
+          if (!el) return;
+          el.style.transition = `opacity ${f || 350}ms ease`;
+          el.style.opacity = '1';
+          if (isFinal) setTimeout(showEnterBtn, 800);
+        }, t);
+        timers.push(timer);
+      });
+
+      window.addEventListener('keydown', (e) => {
+        const btn = document.getElementById('intro-enter');
+        const modal = document.getElementById('intro-modal');
+        if (!modal) return;
+        if (e.code === 'Space' || e.code === 'Enter') {
+          e.preventDefault();
+          if (btn && btn.style.display === 'inline-block') {
+            closeIntro();
+          } else {
+            skipIntro();
+          }
+        }
+      });
+    })();
+    </script>
+
+    <script>
+    window.toggleMute = function() {
+        const on = Audio.toggle();
+        const btn = document.getElementById('mute-btn');
+        if (btn) {
+            btn.textContent = on ? '♪ SND' : '✕ SND';
+            btn.classList.toggle('muted', !on);
+        }
+    };
+
+    let libraryOpen = false;
+    window.toggleLibrary = function() {
+        libraryOpen = !libraryOpen;
+        const lib = document.getElementById('fragment-library');
+        if (lib) lib.classList.toggle('open', libraryOpen);
+    };
+    </script>
+    <script src="audio.js"></script>
+    <script src="engine.js"></script>
+    <script src="renderer.js"></script>
+</body>
+</html>
